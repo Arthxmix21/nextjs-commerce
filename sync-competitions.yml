@@ -1,0 +1,47 @@
+name: Sync competitions.json from backend
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"   # every 6 hours
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout fork
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Fetch latest data from backend repo (filtered first, then raw)
+        run: |
+          set -e
+          mkdir -p public
+          # try filtered first
+          curl -fL "https://raw.githubusercontent.com/Arthxmix21/hkcompete-backend/main/public/competitions.filtered.json" \
+            -o public/competitions.json || \
+          curl -fL "https://raw.githubusercontent.com/Arthxmix21/hkcompete-backend/main/public/competitions.json" \
+            -o public/competitions.json
+          echo "Downloaded $(wc -c < public/competitions.json) bytes"
+
+      - name: Commit change on a data branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -B auto/competitions-sync
+          git add public/competitions.json
+          git commit -m "chore(data): sync competitions.json from backend" || echo "No changes"
+          echo "ready"
+
+      - name: Push branch to your fork
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}   # write access to YOUR fork
+          REPO: ${{ github.repository }}
+        run: |
+          git remote set-url origin "https://x-access-token:${TOKEN}@github.com/${REPO}.git"
+          git push -u origin auto/competitions-sync
